@@ -271,7 +271,7 @@ export default function MembersClient({
 
                       {/* Date Added */}
                       <td className="px-6 py-4 text-xs text-zinc-500 dark:text-zinc-400">
-                        {new Date(m.user.createdAt).toLocaleDateString(undefined, {
+                        {new Date(m.user.createdAt).toLocaleDateString("en-US", {
                           year: 'numeric', 
                           month: 'short', 
                           day: 'numeric'

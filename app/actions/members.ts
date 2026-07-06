@@ -4,6 +4,9 @@ import z from "zod";
 import prisma from "../lib/db";
 import { hashPassword } from "../lib/crypto";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "../lib/auth";
+import { error } from "console";
 
 
 const addMemberSchema = z.object({
@@ -24,6 +27,12 @@ export async function addMemberToOrg(formData : z.infer< typeof addMemberSchema>
         const validatedData = addMemberSchema.parse(formData);
         const {name, email, password, role, orgSlug} = validatedData;
 
+        const session = await getServerSession(authOptions);
+
+        if(!session || !session.user) {
+            return {sucess: false, error: "Unauthenticated"};
+        }
+
         const org = await prisma.organization.findUnique({
             where:{
                 slug : orgSlug
@@ -32,6 +41,24 @@ export async function addMemberToOrg(formData : z.infer< typeof addMemberSchema>
 
         if(!org) {
             return{success: false, error: "Organization not found."};
+        }
+
+        const callerMembership = await prisma.membership.findFirst({
+            where: {
+                userId : session.user.id,
+                organizationId : org.id
+
+            }
+        })
+
+        if(!callerMembership){
+            return { success: false, error: "You do not belong to this organization." };
+        }
+
+        const canInvite = callerMembership.role === "ADMIN" || callerMembership.role === "MANAGER";
+
+        if (!canInvite) {
+            return {success: false, error: "Unauthorized. Only Admins or Managers can invite members"}
         }
 
         const Password = await hashPassword(password);
@@ -96,6 +123,46 @@ export async function addMemberToOrg(formData : z.infer< typeof addMemberSchema>
 export async function UpdateMemberRole(membershipId: string, role: string, orgSlug: string) {
     try {
 
+        const session = await getServerSession(authOptions);
+        if(!session || !session.user) {
+            return {sucess : false, error : "Unauthenticated"}
+        }
+
+        const targetMembership = await prisma.membership.findUnique({
+            where: {id: membershipId},
+            include : {user: true},
+        })
+
+        if (!targetMembership) {
+            return { success: false, error: "Membership not found." };
+        }
+
+        const callerMembership = await prisma.membership.findFirst({
+            where: {
+                userId : session.user.id,
+                organizationId : targetMembership.organizationId
+            }
+        })
+
+        if (!callerMembership) {
+            return { success: false, error: "You do not belong to this organization." };
+        }
+
+        const isCallerAdminOrManager = callerMembership.role === "ADMIN" || callerMembership.role === "MANAGER";
+        if (!isCallerAdminOrManager) {
+            return { success: false, error: "Unauthorized. Only Admins or Managers can update roles." };
+        }
+
+               if(targetMembership.role === "ADMIN" && callerMembership.role !== "ADMIN") {
+            return { success: false, error: "Managers cannot modify an Admin's role." };
+        }
+        
+
+        if(targetMembership.userId === session.user.id) {
+              return { success: false, error: "You cannot change your own role." };
+        }
+
+
         const updatedMembership = await prisma.membership.update({
             where : {id: membershipId},
             data : {role},
@@ -121,6 +188,44 @@ export async function UpdateMemberRole(membershipId: string, role: string, orgSl
 
 export async function RemoveMemberFromOrg(membershipId: string, orgSlug: string) {
     try {
+
+        const session = await getServerSession(authOptions);
+        if (!session || !session.user) {
+            return { success: false, error: "Unauthenticated." };
+        }
+
+        const targetMembership = await prisma.membership.findUnique({
+            where : {id : membershipId}
+        });
+
+        if(!targetMembership) {
+            return {success : false, error : "Membership not found"}
+        }
+
+        const callerMembership = await prisma.membership.findFirst({
+            where : {
+                userId : session.user.id,
+                organizationId : targetMembership.organizationId
+            }
+        })
+
+        if (!callerMembership) {
+            return { success: false, error: "You do not belong to this organization." };
+        }
+
+        const isCallerAdminOrManager = callerMembership.role === "ADMIN" || callerMembership.role === "MANAGER";
+        if (!isCallerAdminOrManager) {
+            return { success: false, error: "Unauthorized. Only Admins or Managers can update roles." };
+        }
+
+        if(targetMembership.role === "ADMIN" && callerMembership.role !== "ADMIN") {
+            return { success: false, error: "Managers cannot modify an Admin's role." };
+        }
+        
+
+        if(targetMembership.userId === session.user.id) {
+              return { success: false, error: "You cannot change your own role." };
+        }
 
         const removeMembershipFromOrg = await prisma.membership.delete({
             where : {id : membershipId},

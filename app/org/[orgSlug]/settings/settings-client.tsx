@@ -127,7 +127,7 @@ export default function SettingsClient({ org, currentUserMembership }: SettingsC
             <span className="text-[10px] font-bold text-zinc-450 uppercase tracking-wider block">Creation Date</span>
             <div className="flex items-center gap-1.5 text-xs text-zinc-650 dark:text-zinc-350">
               <Calendar size={12} className="text-zinc-400" />
-              {new Date(org.createdAt).toLocaleDateString(undefined, {
+              {new Date(org.createdAt).toLocaleDateString("en-US", {
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric'
